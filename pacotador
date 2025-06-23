@@ -8,9 +8,9 @@ import sys
 
 # === CONFIGURAÇÃO ===
 TARGET_IP     = "8.8.8.8"    # IP para ping e flood
-TARGET_PORT   = 8080           # Porta UDP para flood
-BUFFER_SIZE   = 4248        # Payload UDP sem fragmentação
-FLOOD_THREADS = 1            # Threads paralelas de flood
+TARGET_PORT   = 80           # Porta UDP para flood
+BUFFER_SIZE   = 65507        # Payload UDP sem fragmentação
+FLOOD_THREADS = 4            # Threads paralelas de flood
 IFACE_NAME    = "Ethernet"   # Nome exato da interface
 
 # === FUNÇÃO DE FLOOD UDP ===
@@ -37,8 +37,8 @@ def get_ping(ip):
         return "Err"
     return "T/o"
 
-# === LOOP DE MONITORAMENTO COM EMA SMOOTHING ===
-alpha = 0.3  # fator de suavização para EMA
+# === LOOP DE MONITORAMENTO COM EMA SMOOTHING E 2s INTERVAL ===
+alpha = 0.1  # fator de suavização para EMA (menor = mais suave)
 ema = None   # valor inicial da média móvel exponencial
 prev_sent = None
 
@@ -52,7 +52,7 @@ def monitor_iface():
     prev_sent = stats.bytes_sent
 
     while True:
-        time.sleep(1)
+        time.sleep(2)
         stats = psutil.net_io_counters(pernic=True).get(IFACE_NAME)
         if not stats:
             status_var.set(f"Interface '{IFACE_NAME}' ausente")
@@ -82,7 +82,7 @@ root.configure(bg="black")
 # Cabeçalho
 tk.Label(
     root,
-    text="PACOTADAS DO ETETINHA DURA",
+    text="PACOTADAS DO ET",
     font=("Helvetica", 24, "bold"),
     fg="lime",
     bg="black"

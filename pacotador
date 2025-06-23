@@ -82,7 +82,7 @@ root.configure(bg="black")
 # Cabeçalho
 tk.Label(
     root,
-    text="PACOTADAS DO ET",
+    text="PACOTADAS DO ETETINHA DURA",
     font=("Helvetica", 24, "bold"),
     fg="lime",
     bg="black"

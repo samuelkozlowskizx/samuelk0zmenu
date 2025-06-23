@@ -7,10 +7,10 @@ import socket
 import sys
 
 # === CONFIGURAÇÃO ===
-TARGET_IP     = "8.8.8.8"    # IP para ping e flood
-TARGET_PORT   = 80           # Porta UDP para flood
+TARGET_IP     = "192.168.1.5"    # IP para ping e flood
+TARGET_PORT   = 8080           # Porta UDP para flood
 BUFFER_SIZE   = 65507        # Payload UDP sem fragmentação
-FLOOD_THREADS = 4            # Threads paralelas de flood
+FLOOD_THREADS = 15            # Threads paralelas de flood
 IFACE_NAME    = "Ethernet"   # Nome exato da interface
 
 # === FUNÇÃO DE FLOOD UDP ===

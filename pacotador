@@ -72,8 +72,8 @@ def monitor_iface():
         else:
             ema = ema * (1 - alpha) + instant_mbps * alpha
 
-        ping = get_ping(TARGET_IP)
-        status_var.set(f"TX: {ema:.1f} Mbps    Ping: {ping if ping else '??'}")
+        ping = get_ping(TARGET_IP) or "??"
+        status_var.set(f"TX: {ema:.1f} Mbps    Ping: {ping}")
 
 # === GUI ===
 root = tk.Tk()

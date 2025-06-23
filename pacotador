@@ -1,17 +1,50 @@
-import socket
+import tkinter as tk
+import threading
+import psutil
+import time
+import subprocess
 
-# Configurações do servidor
-TARGET_IP = '192.168.1.1'
-TARGET_PORT = 11111
-BUFFER_SIZE = 40000
+TARGET_IP = "8.8.8.8"  # Altere se quiser outro IP
 
-# Criar socket UDP
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def get_tx_mbps():
+    old_sent = psutil.net_io_counters().bytes_sent
+    time.sleep(1)
+    new_sent = psutil.net_io_counters().bytes_sent
+    return (new_sent - old_sent) / 1_000_000  # Convert to MB
 
-# Dados a serem enviados
-data = b'A' * BUFFER_SIZE
+def get_ping(ip):
+    try:
+        result = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True)
+        for line in result.stdout.splitlines():
+            if "tempo=" in line or "time=" in line:
+                return line.split("tempo=")[-1].split()[0] if "tempo=" in line else line.split("time=")[-1].split()[0]
+    except:
+        return "Erro"
+    return "Timeout"
 
-# Enviar pacotes em loop
-while True:
-    sock.sendto(data, (TARGET_IP, TARGET_PORT))
+def update_info():
+    while True:
+        tx = get_tx_mbps()
+        ping = get_ping(TARGET_IP)
+        status_var.set(f"TX: {tx:.2f} MB/s    Ping: {ping}")
+        time.sleep(1)
 
+# GUI
+root = tk.Tk()
+root.title("PACOTADAS DO ET")
+root.geometry("400x200")
+root.resizable(False, False)
+
+label = tk.Label(root, text="PACOTADAS DO ET", font=("Helvetica", 24, "bold"), fg="lime", bg="black")
+label.pack(pady=20, expand=True, fill="both")
+
+status_var = tk.StringVar()
+status_label = tk.Label(root, textvariable=status_var, font=("Courier", 14), bg="black", fg="white")
+status_label.pack(side="bottom", pady=10)
+
+root.configure(bg="black")
+
+# Thread para monitoramento
+threading.Thread(target=update_info, daemon=True).start()
+
+root.mainloop()

